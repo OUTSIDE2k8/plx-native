@@ -243,7 +243,7 @@ fn photo_transcode_fetches_the_sized_jellyfin_image() {
         other => panic!("{other:?}"),
     }
     let (_, p) = seen(&f).into_iter().find(|(_, p)| p.starts_with("/Items/")).unwrap();
-    assert_eq!(p, format!("/Items/{MOVIE_ID}/Images/Primary?tag=tagP&quality=90&format=Jpg&fillWidth=300&fillHeight=450"));
+    assert_eq!(p, format!("/Items/{MOVIE_ID}/Images/Primary?quality=90&format=Jpg&tag=tagP&fillWidth=300&fillHeight=450"));
 }
 
 #[test]

@@ -274,6 +274,7 @@ impl Bridge {
             (_, ["library", "metadata", id, "similar"]) => self.similar(r, id),
             (_, ["library", "metadata", id, "related"]) => self.related(id),
             (_, ["library", "metadata", id, kind @ ("thumb" | "art"), tag]) => self.image(id, kind, tag, r),
+            (_, ["library", "metadata", id, kind @ ("thumb" | "art")]) => self.image(id, kind, "", r),
             (_, ["library", "metadata", _, _]) => Ok(ok(with(mc(), "Metadata", json!([])))),
             (_, ["library", "people", pid, "media"]) => self.person_media(r, pid),
             (_, ["library", "people", id, "thumb", tag]) => self.image(id, "thumb", tag, r),
@@ -717,9 +718,6 @@ impl Bridge {
     // ---- artwork ------------------------------------------------------------------------------
 
     fn image(&self, id: &str, kind: &str, tag: &str, r: &Req) -> Result<Answer, Error> {
-        if !ids::is_item_id(id) && id.contains('/') {
-            return Ok(Answer::Bytes(404, "text/plain", Vec::new()));
-        }
         let w = r.int("width").unwrap_or(0).clamp(0, 3840);
         let h = r.int("height").unwrap_or(0).clamp(0, 2160);
         self.fetch_image(id, kind, tag, w, h)
@@ -727,7 +725,11 @@ impl Bridge {
 
     fn fetch_image(&self, id: &str, kind: &str, tag: &str, w: i64, h: i64) -> Result<Answer, Error> {
         let which = if kind == "art" { "Backdrop/0" } else { "Primary" };
-        let mut path = format!("/Items/{}/Images/{which}?tag={}&quality=90&format=Jpg", enc(id), enc(tag));
+        if !ids::is_item_id(id) {
+            return Ok(Answer::Bytes(404, "text/plain", Vec::new()));
+        }
+        let mut path = format!("/Items/{id}/Images/{which}?quality=90&format=Jpg");
+        if !tag.is_empty() { path.push_str(&format!("&tag={}", enc(tag))); }
         if w > 0 { path.push_str(&format!("&fillWidth={w}")); }
         if h > 0 { path.push_str(&format!("&fillHeight={h}")); }
         let reply = self.up.raw("GET", &path, None)?;
@@ -737,6 +739,12 @@ impl Bridge {
     /// `/photo/:/transcode?url=<a bridge image path>&width&height` — the app's resized-artwork door.
     fn photo(&self, r: &Req) -> Result<Answer, Error> {
         let url = r.param("url").unwrap_or("");
+        // A full URL back to this bridge (the app sometimes absolutises an artwork path) is the
+        // same image: keep only its path.
+        let url = match url.split_once("://") {
+            Some((_, rest)) => rest.find('/').map_or("", |at| &rest[at..]),
+            None => url,
+        };
         let path = url.split('?').next().unwrap_or("");
         let segs: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
         let w = r.int("width").unwrap_or(0).clamp(0, 3840);
@@ -744,7 +752,14 @@ impl Bridge {
         match segs.as_slice() {
             ["library", "metadata", id, kind @ ("thumb" | "art"), tag]
             | ["library", "people", id, kind @ "thumb", tag] => self.fetch_image(id, kind, tag, w, h),
-            _ => Ok(Answer::Bytes(404, "text/plain", Vec::new())),
+            // PMS also answers the tagless form, and the app builds it for a parent's artwork.
+            ["library", "metadata", id, kind @ ("thumb" | "art")] => self.fetch_image(id, kind, "", w, h),
+            other => {
+                // The shape only (segment count and the first two words), never an id.
+                plx_base::eventlog::log(&format!("jellyfin: no artwork for a {}-segment path under /{}",
+                    other.len(), other.iter().take(2).copied().collect::<Vec<_>>().join("/")));
+                Ok(Answer::Bytes(404, "text/plain", Vec::new()))
+            }
         }
     }
 

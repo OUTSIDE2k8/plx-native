@@ -1,0 +1,104 @@
+name: jellyfin ipk
+
+# Builds the Jellyfin edition of the app (the `jellyfin-bridge` branch) as an installable .ipk and
+# publishes it on a rolling GitHub release, `jellyfin-latest`, so a television owner can install it
+# with webOS Dev Manager or from the Homebrew Channel repository this job also writes.
+#
+# It is the lean sibling of `build-package.yml`: the same toolchain (the pinned nightly Rust, the
+# webosbrew NDK on an ARM runner) and the same `make` + `make ipk`, without the Sentry symbol upload
+# and the webosbrew catalogue gates, which belong to upstream's releases. The flavour is `nightly`
+# (its own app id beside any PlxNative install, a dated version so Homebrew Channel offers each new
+# build as an update) with RELEASE=1, so no developer overlay or trigger ships.
+
+on:
+  push:
+    branches: [jellyfin-bridge]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: jellyfin-ipk
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    env:
+      RUST_NIGHTLY: nightly-2026-07-02
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install build packages
+        run: |
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y --no-install-recommends cmake pkg-config nasm
+
+      - name: Install pinned nightly Rust
+        run: |
+          rustup toolchain install "$RUST_NIGHTLY" --profile minimal --component rust-src
+          rustup run "$RUST_NIGHTLY" rustc --version
+
+      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
+        with:
+          workspaces: rust-modules
+          key: jellyfin-armv7
+
+      - id: ndk
+        uses: ./.github/actions/webos-ndk
+
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            vendor/ffmpeg-prefix
+            vendor/ffmpeg-build
+          key: ffmpeg-${{ runner.arch }}-${{ hashFiles('ci/build-ffmpeg.sh') }}
+
+      - name: Host tests of the Jellyfin bridge
+        run: cargo +"$RUST_NIGHTLY" test --manifest-path rust-modules/Cargo.toml -p plx_jellyfin
+
+      - name: Build + package
+        env:
+          WEBOS_SDK: ${{ steps.ndk.outputs.sdk-dir }}
+          RELEASE: "1"
+          FLAVOR: nightly
+          TELEMETRY: development
+        run: |
+          set -euo pipefail
+          export PLX_NIGHTLY_DATE=$(date -u +%Y%m%d)
+          make -j"$(nproc)"
+          make ipk
+          ls -la pkg/*.ipk
+
+      - name: Homebrew Channel repository
+        run: |
+          set -euo pipefail
+          ipk=$(ls pkg/*.ipk | head -1)
+          python3 tools/jellyfin-repo.py "$ipk" \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download/jellyfin-latest" dist
+          ls -la dist
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: jellyfin-ipk
+          path: |
+            pkg/*.ipk
+            dist/*
+
+      - name: Publish the rolling release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ipk=$(ls pkg/*.ipk | head -1)
+          cp "$ipk" dist/plxnative-jellyfin.ipk
+          notes="Jellyfin edition, built from ${GITHUB_SHA::8} on $(date -u +%Y-%m-%d).
+
+          Install: webOS Dev Manager → Install app → plxnative-jellyfin.ipk.
+          Homebrew Channel: Settings → Add repository → https://github.com/${GITHUB_REPOSITORY}/releases/download/jellyfin-latest/repo.json"
+          gh release delete jellyfin-latest --yes --cleanup-tag 2>/dev/null || true
+          gh release create jellyfin-latest --prerelease --target "$GITHUB_SHA" \
+            --title "PlxNative · Jellyfin (latest)" --notes "$notes" \
+            dist/plxnative-jellyfin.ipk dist/*.manifest.json dist/repo.json

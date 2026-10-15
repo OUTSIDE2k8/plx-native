@@ -139,6 +139,13 @@ pub struct Bridge {
     playing: Mutex<HashMap<String, Playing>>,
     /// The audio/subtitle stream ids the app last chose per part (`PUT /library/parts/{id}`).
     selection: Mutex<HashMap<i64, (Option<i64>, Option<i64>)>>,
+    /// The last requests the app made (method, path, status), newest last, for the playback
+    /// diagnostic ([`Bridge::schedule_diagnostic`]). Never a query: a token can ride one.
+    recent: Mutex<std::collections::VecDeque<String>>,
+    /// When the last diagnostic was scheduled (seconds since the bridge started), so a burst of
+    /// playback requests uploads one.
+    last_diag: std::sync::atomic::AtomicU64,
+    started: Instant,
 }
 
 const LIST_FIELDS: &str = "PrimaryImageAspectRatio,SortName,Overview,ProductionYear,PremiereDate,DateCreated,OfficialRating,CommunityRating,CriticRating,Genres,ChildCount,RecursiveItemCount,ParentId";
@@ -152,6 +159,9 @@ impl Bridge {
             local_token: local_token.to_owned(), views: Mutex::new(None),
             queues: Mutex::new((1, HashMap::new())), playing: Mutex::new(HashMap::new()),
             selection: Mutex::new(HashMap::new()),
+            recent: Mutex::new(std::collections::VecDeque::new()),
+            last_diag: std::sync::atomic::AtomicU64::new(0),
+            started: Instant::now(),
         }
     }
 
@@ -247,13 +257,62 @@ impl Bridge {
         if !token_ok && r.path != "/identity" && r.path != "/" {
             return Answer::Json(401, json!({ "error": "unauthorized" }));
         }
-        match self.route(&r) {
+        let answer = match self.route(&r) {
             Ok(a) => a,
             Err(Error::Unauthorized) => Answer::Json(401, json!({ "error": "jellyfin refused the token" })),
             Err(Error::Unreachable) => Answer::Json(503, json!({ "error": "jellyfin unreachable" })),
             Err(Error::Status(s)) => Answer::Json(if s == 404 { 404 } else { 502 }, container(mc())),
             Err(Error::Malformed) => Answer::Json(502, container(mc())),
+        };
+        self.note(&r, &answer);
+        answer
+    }
+
+    /// Remember one request for the diagnostic, and schedule one when it was a playback request.
+    fn note(&self, r: &Req, a: &Answer) {
+        let status = match a { Answer::Json(s, _) | Answer::Bytes(s, ..) => *s, Answer::Redirect(_) => 302 };
+        let keys: Vec<&str> = r.q.keys().map(String::as_str).filter(|k| !k.to_ascii_lowercase().contains("token")).collect();
+        let line = format!("{:>7.1}s {} {} -> {status} [{}]", self.started.elapsed().as_secs_f32(), r.method, r.path,
+            keys.join(","));
+        if let Ok(mut g) = self.recent.lock() {
+            if g.len() >= 300 { g.pop_front(); }
+            g.push_back(line);
         }
+        let playback = r.path.starts_with("/video/") || r.path.starts_with("/library/parts/")
+            || r.path == "/:/timeline";
+        if playback {
+            self.schedule_diagnostic();
+        }
+    }
+
+    /// **The playback diagnostic.** Twenty seconds after the app starts a playback, upload the
+    /// bridge's recent requests and the tail of the app's event log to the Jellyfin server's own
+    /// client-log store (`POST /ClientLog/Document`, Dashboard → Logs), so a playback that fails on
+    /// a television nobody can attach a debugger to still leaves its evidence where its owner can
+    /// read it. At most once a minute. Nothing leaves the household: it goes to the same server.
+    fn schedule_diagnostic(&self) {
+        use std::sync::atomic::Ordering;
+        let now = self.started.elapsed().as_secs() + 61;
+        let last = self.last_diag.load(Ordering::Relaxed);
+        if now < last + 60 || self.last_diag.compare_exchange(last, now, Ordering::Relaxed, Ordering::Relaxed).is_err() {
+            return;
+        }
+        let up = Upstream::new(&self.up.base, &self.up.token, &self.up.user_id, self.up.identity.clone(),
+            Box::new(crate::upstream::CurlTransport));
+        let requests: Vec<String> = self.recent.lock().map(|g| g.iter().cloned().collect()).unwrap_or_default();
+        plx_base::task::spawn_small("jellyfin-diag", move || {
+            std::thread::sleep(Duration::from_secs(20));
+            let mut doc = String::from("PlxNative Jellyfin bridge — playback diagnostic\n\n== bridge requests ==\n");
+            for l in &requests { doc.push_str(l); doc.push('\n'); }
+            doc.push_str("\n== app event log (tail) ==\n");
+            if let Ok(bytes) = std::fs::read(plx_base::eventlog::events_log()) {
+                let tail = &bytes[bytes.len().saturating_sub(96 * 1024)..];
+                doc.push_str(&plx_base::eventlog::redact_tokens(&String::from_utf8_lossy(tail)));
+            }
+            let r = up.post_text("/ClientLog/Document", doc.as_bytes());
+            plx_base::eventlog::log(&format!("jellyfin: playback diagnostic uploaded to the server's logs ({})",
+                if r.is_ok() { "ok" } else { "refused" }));
+        });
     }
 
     fn route(&self, r: &Req) -> Result<Answer, Error> {

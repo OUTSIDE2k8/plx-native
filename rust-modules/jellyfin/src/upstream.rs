@@ -132,6 +132,18 @@ impl Upstream {
         }
     }
 
+    /// A plain-text upload (the client-log document).
+    pub fn post_text(&self, path: &str, body: &[u8]) -> Result<(), Error> {
+        let mut h = self.headers(false);
+        h.push("Content-Type: text/plain".to_owned());
+        let r = self.transport.send("POST", &self.url(path), &h, Some(body)).ok_or(Error::Unreachable)?;
+        match r.status {
+            200..=299 => Ok(()),
+            401 | 403 => Err(Error::Unauthorized),
+            s => Err(Error::Status(s)),
+        }
+    }
+
     pub fn get(&self, path: &str) -> Result<Value, Error> {
         let r = self.raw("GET", path, None)?;
         serde_json::from_slice(&r.body).map_err(|_| Error::Malformed)

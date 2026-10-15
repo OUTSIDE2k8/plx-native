@@ -1177,6 +1177,9 @@ pub(crate) unsafe fn construct(
     // keeps the Plex path it was recorded on.
     if !controlled {
         plx_jellyfin::pairing::set_active(true);
+        // The first-run "Share crash reports" answer decides whether diagnostics go to the paired
+        // Jellyfin server's own logs (`plx_jellyfin::reports_allowed`).
+        plx_jellyfin::set_report_gate(plx_telemetry::telemetry::consent::allows_errors);
     }
     let jellyfin = if controlled { None } else { plx_jellyfin::boot() };
     if let Some(j) = &jellyfin {

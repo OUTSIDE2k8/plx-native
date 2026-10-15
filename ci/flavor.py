@@ -123,6 +123,13 @@ def appinfo_for(flavor: str, nightly_date: "str | None" = None) -> dict:
             a["version"], _release_line_content(), _nightly_date(nightly_date))
         if err:
             raise SystemExit(err)
+        # A build serial (the Jellyfin edition's CI run number, `.github/workflows/jellyfin-ipk.yml`)
+        # makes every build of one day a distinct, ever-larger version, so Homebrew Channel offers
+        # each one as an update: it compares the version string, and LG's installer only moves
+        # forward. Folded into the minor so the patch stays the cut date.
+        serial = os.environ.get("PLX_BUILD_SERIAL", "").strip()
+        if serial.isdigit():
+            triplet = (triplet[0], triplet[1] * 1000 + int(serial), triplet[2])
         a["version"] = "{}.{}.{}".format(*triplet)
     return a
 

@@ -309,3 +309,15 @@ fn the_a_to_z_rail_counts_letters_in_title_order() {
         .map(|x| (x["title"].as_str().unwrap().to_owned(), x["size"].as_i64().unwrap())).collect();
     assert_eq!(d, [("A".to_owned(), 2), ("B".to_owned(), 1), ("#".to_owned(), 1)]);
 }
+
+/// A card on a shelf is playable straight from its row: the detail page plays the row it was
+/// opened from (`PlayIntent::Movie`), whose part key is empty unless the LISTING carried media.
+#[test]
+fn list_rows_carry_the_part_a_play_needs() {
+    let (b, f) = bridge_with(fake());
+    let mc = json(get(&b, "/hubs/continueWatching"));
+    let key = mc["Hub"][0]["Metadata"][0]["Media"][0]["Part"][0]["key"].as_str().unwrap_or("");
+    assert!(key.starts_with("/library/parts/"), "row part key: {key:?}");
+    let (_, q) = seen(&f).into_iter().find(|(_, p)| p.starts_with("/UserItems/Resume")).unwrap();
+    assert!(q.contains("MediaSources"), "{q}");
+}

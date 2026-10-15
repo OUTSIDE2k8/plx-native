@@ -148,7 +148,7 @@ pub struct Bridge {
     started: Instant,
 }
 
-const LIST_FIELDS: &str = "PrimaryImageAspectRatio,SortName,Overview,ProductionYear,PremiereDate,DateCreated,OfficialRating,CommunityRating,CriticRating,Genres,ChildCount,RecursiveItemCount,ParentId";
+const LIST_FIELDS: &str = "PrimaryImageAspectRatio,SortName,Overview,ProductionYear,PremiereDate,DateCreated,OfficialRating,CommunityRating,CriticRating,Genres,ChildCount,RecursiveItemCount,ParentId,MediaSources";
 const DETAIL_FIELDS: &str = "PrimaryImageAspectRatio,SortName,Overview,ProductionYear,PremiereDate,DateCreated,OfficialRating,CommunityRating,CriticRating,Genres,ChildCount,RecursiveItemCount,ParentId,People,Studios,Taglines,MediaSources,MediaStreams,Chapters,ProductionLocations,ProviderIds";
 const IMAGES: &str = "&EnableImageTypes=Primary,Backdrop,Thumb&ImageTypeLimit=1&EnableUserData=true";
 
@@ -292,6 +292,9 @@ impl Bridge {
     /// read it. At most once a minute. Nothing leaves the household: it goes to the same server.
     fn schedule_diagnostic(&self) {
         use std::sync::atomic::Ordering;
+        if !crate::reports_allowed() {
+            return;
+        }
         let now = self.started.elapsed().as_secs() + 61;
         let last = self.last_diag.load(Ordering::Relaxed);
         if now < last + 60 || self.last_diag.compare_exchange(last, now, Ordering::Relaxed, Ordering::Relaxed).is_err() {
@@ -304,6 +307,7 @@ impl Bridge {
             std::thread::sleep(Duration::from_secs(20));
             let mut doc = String::from("PlxNative Jellyfin bridge — playback diagnostic\n\n== bridge requests ==\n");
             for l in &requests { doc.push_str(l); doc.push('\n'); }
+            crate::append_crash_tail(&mut doc);
             doc.push_str("\n== app event log (tail) ==\n");
             if let Ok(bytes) = std::fs::read(plx_base::eventlog::events_log()) {
                 let tail = &bytes[bytes.len().saturating_sub(96 * 1024)..];

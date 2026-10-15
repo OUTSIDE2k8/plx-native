@@ -65,6 +65,8 @@ jobs:
           RELEASE: "1"
           FLAVOR: nightly
           TELEMETRY: development
+          # Every build a new, larger version, so Homebrew Channel offers it as an update.
+          PLX_BUILD_SERIAL: ${{ github.run_number }}
         run: |
           set -euo pipefail
           export PLX_NIGHTLY_DATE=$(date -u +%Y%m%d)
@@ -73,6 +75,8 @@ jobs:
           ls -la pkg/*.ipk
 
       - name: Homebrew Channel repository
+        env:
+          PLX_BUILD_SERIAL: ${{ github.run_number }}
         run: |
           set -euo pipefail
           ipk=$(ls pkg/*.ipk | head -1)

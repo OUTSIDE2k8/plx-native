@@ -100,4 +100,25 @@ def nightly_package_triplet(
     triplet, err = next_version_triplet(tracked_version, release_line_content)
     if triplet is None:
         return None, err
-    return (triplet[0], triplet[1], int(date)), None
+    serial = build_serial()
+    minor = triplet[1] * SERIAL_SPAN + serial if serial is not None else triplet[1]
+    return (triplet[0], minor, int(date)), None
+
+
+# A build serial (the Jellyfin edition's CI run number, `.github/workflows/jellyfin-ipk.yml`,
+# exported as `PLX_BUILD_SERIAL`) makes every build of one day a distinct, ever-larger package
+# version, so Homebrew Channel offers each one as an update: `0.9.20261015` becomes `0.9004.20261015`
+# for run 4. Folded into the MINOR so the patch stays the cut date and the version stays three
+# integers. Unset (every upstream build), nothing changes.
+SERIAL_SPAN = 1000
+
+
+def build_serial() -> "int | None":
+    import os
+    raw = os.environ.get("PLX_BUILD_SERIAL", "").strip()
+    return int(raw) % SERIAL_SPAN if raw.isdigit() else None
+
+
+def unserialed_minor(minor: int) -> int:
+    """A package minor with `build_serial`'s fold undone, for comparing with the binary's X.Y."""
+    return minor // SERIAL_SPAN if build_serial() is not None else minor

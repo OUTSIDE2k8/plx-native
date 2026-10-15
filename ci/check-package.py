@@ -1410,7 +1410,8 @@ if binary.exists():
             ).encode()
             check(_cargo_m is not None
                   and nightly_expect.decode().split("-nightly-")[0].split("@")[1].rsplit(".", 1)[0]
-                  == appinfo["version"].rsplit(".", 1)[0],
+                  == "{}.{}".format(appinfo["version"].split(".")[0],
+                                   version_rule.unserialed_minor(int(appinfo["version"].split(".")[1]))),
                   "the nightly binary's reported X.Y matches the package version's X.Y "
                   f"(reported {nightly_expect.decode()}, package {appinfo['version']})")
             nightly_found = nightly_expect in blob

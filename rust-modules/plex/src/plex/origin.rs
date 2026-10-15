@@ -77,15 +77,36 @@ impl CredentialPolicy {
     }
 
     /// May a credential ride `origin` under this policy? TLS always; plaintext only under
-    /// [`CredentialPolicy::AllowPlaintext`].
+    /// [`CredentialPolicy::AllowPlaintext`] — or to a LOOPBACK literal, under either policy.
+    ///
+    /// The loopback case is the Jellyfin bridge (`plx_jellyfin`): a server this same process runs
+    /// on `127.0.0.1`, whose "token" is a secret it minted for this install. A request to a
+    /// loopback address never leaves the television, so there is no network for TLS to protect it
+    /// on; refusing it would only make a store build unable to reach its own bridge. The rule is
+    /// on the address LITERAL (`127.0.0.0/8`, `::1`), never on a name, so no DNS answer can steer a
+    /// token through it.
     pub fn may_carry_credential(self, origin: &Origin) -> bool {
-        origin.is_tls() || self == CredentialPolicy::AllowPlaintext
+        origin.is_tls() || self == CredentialPolicy::AllowPlaintext || is_loopback_literal(origin.host())
     }
+}
+
+/// `127.0.0.0/8` or `::1`, written as a literal (a name is never loopback here).
+pub fn is_loopback_literal(host: &str) -> bool {
+    host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_store_build_lets_a_credential_reach_loopback_literals_and_nothing_else_in_plaintext() {
+        let p = CredentialPolicy::HttpsOnly;
+        assert!(p.may_carry_credential(&Origin::http("127.0.0.1", 32400)));
+        assert!(p.may_carry_credential(&Origin::http("::1", 32400)));
+        assert!(!p.may_carry_credential(&Origin::http("localhost", 32400)), "a name is not a literal");
+        assert!(!p.may_carry_credential(&Origin::http("192.168.1.10", 32400)));
+    }
 
     /// T1: the store-policy trigger makes a developer build `HttpsOnly`, and nothing can loosen a
     /// store build.

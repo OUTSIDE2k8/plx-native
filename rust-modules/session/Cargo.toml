@@ -22,8 +22,8 @@ default = []
 # `cfg(not(feature = "devtriggers"))`, and the sign-in trouble and read-out triggers read their
 # trigger files through `plx_base::devtrig`, which is compile-time `None` without it. A missing
 # forward would run the shipping-policy cases in a build that has the dev surface.
-devtriggers = ["plx_base/devtriggers", "plx_machine/devtriggers", "plx_net/devtriggers", "plx_platform/devtriggers", "plx_plex/devtriggers", "plx_telemetry/devtriggers"]
-hostsim = ["plx_base/hostsim", "plx_machine/hostsim", "plx_platform/hostsim", "plx_plex/hostsim", "plx_telemetry/hostsim"]
+devtriggers = ["plx_base/devtriggers", "plx_machine/devtriggers", "plx_net/devtriggers", "plx_platform/devtriggers", "plx_plex/devtriggers", "plx_telemetry/devtriggers", "plx_jellyfin/devtriggers"]
+hostsim = ["plx_base/hostsim", "plx_machine/hostsim", "plx_platform/hostsim", "plx_plex/hostsim", "plx_telemetry/hostsim", "plx_jellyfin/hostsim"]
 # The `cfg(test)` seams other crates' tests use (`auth::test_support`, `auth::SessionIdentity::of`,
 # `auth::synthetic_incident`, `auth::settled_probe_for_test`, `auth::owner::scenarios`) plus the
 # test-mode arms `cfg(test)` alone cannot give a dependent (the default `ProfileWorkIo::admit`, the
@@ -38,6 +38,9 @@ plx_platform = { path = "../platform" }
 plx_net = { path = "../net" }
 plx_plex = { path = "../plex" }
 plx_telemetry = { path = "../telemetry" }
+# The Jellyfin pairing the sign-in worker runs instead of plex.tv's PIN when the app is in Jellyfin
+# mode (`plx_jellyfin::pairing::active`).
+plx_jellyfin = { path = "../jellyfin" }
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 serde_json = { version = "1", default-features = false, features = ["alloc", "std"] }
 

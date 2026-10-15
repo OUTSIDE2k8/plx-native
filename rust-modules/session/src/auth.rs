@@ -1080,6 +1080,9 @@ fn login_worker_with_output(epoch: u64, cid: String, ask: &PlaintextAsk, output:
         let (message, incident) = case.canned_login_failure();
         return output_failed_naming(output, epoch, &message, incident, None, case.canned_account());
     }
+    if plx_jellyfin::pairing::active() {
+        return jellyfin_login(epoch, output);
+    }
     let ac = AccountClient::new(&cid, None);
 
     // 1) create a pin, and KEEP creating one for as long as this screen is up and the last one
@@ -1140,6 +1143,87 @@ fn login_worker_with_output(epoch: u64, cid: String, ask: &PlaintextAsk, output:
     }
     let Discovery::Ok { server, sources } = discovery else { return };
     finish_sign_in(&ac, epoch, server, sources, output);
+}
+
+/// **The sign-in worker in Jellyfin mode** — the same screen and the same phases as the plex.tv
+/// PIN flow above, with Jellyfin's Quick Connect behind them (`plx_jellyfin::pairing` holds the
+/// Jellyfin half of each step and says why it is shaped this way).
+///
+/// Find the server → publish a Quick Connect code (and a QR of the server's Quick Connect page) as
+/// the code on screen → poll until it is approved → save the pairing → start the process again,
+/// whose boot finds a signed-in Jellyfin and goes straight to Home. A code is replaced like a plex
+/// pin when it runs out, up to [`MAX_PIN_GENERATIONS`] codes per visit.
+fn jellyfin_login(epoch: u64, output: &dyn owner::ObservationSink) {
+    use plx_jellyfin::pairing::{self, PairError};
+    use plx_platform::i18n::msg;
+    let fail = |e: &PairError| {
+        let (message, kind) = match e {
+            PairError::NoServer => (msg::browse_jellyfin_no_server(), IncidentKind::Discovery(DiscoveryClass::Silent)),
+            PairError::QuickConnectOff => (msg::browse_jellyfin_quick_connect_off(), IncidentKind::Authorization),
+            PairError::Unreachable => (msg::browse_jellyfin_unreachable(), IncidentKind::Discovery(DiscoveryClass::Silent)),
+            PairError::Refused(_) => (msg::browse_jellyfin_unreachable(), IncidentKind::PinCreate),
+        };
+        log(&format!("auth: jellyfin pairing stopped ({e:?})"));
+        output_failed(output, epoch, message, IncidentContext::new(kind, None), None);
+    };
+    let transport = pairing::transport();
+    let cfg = plx_jellyfin::Config::load_or_fresh();
+    log("auth: jellyfin pairing — looking for a server");
+    let (base, server_id, server_name) = match pairing::find_server(&cfg, &transport) {
+        Ok(found) => found,
+        Err(e) => return fail(&e),
+    };
+    let mut generation: u32 = 0;
+    loop {
+        generation += 1;
+        if !output.live() { return; }
+        if generation > 1 && !output.progress(LoginProgress::CodeReplacing { epoch }.into()) { return; }
+        let (code, secret) = match pairing::start_code(&base, &cfg, &transport) {
+            Ok(c) => c,
+            Err(e) => return fail(&e),
+        };
+        log(&format!("auth: jellyfin quick connect code up (code {generation} of {MAX_PIN_GENERATIONS})"));
+        let qr_png = pairing::qr_png(&pairing::quick_connect_url(&base));
+        if !output.live() { return; }
+        if !output.progress(LoginProgress::CodeReady { epoch, code, qr_png }.into()) { return; }
+        // Jellyfin keeps a Quick Connect request for ten minutes; ask for a new one a little before.
+        let minted = Instant::now();
+        let mut misses = 0u32;
+        let approved = loop {
+            for _ in 0..8 {
+                if !output.live() { return; }
+                std::thread::sleep(Duration::from_millis(250));
+            }
+            match pairing::poll(&base, &cfg, &secret, &transport) {
+                Ok(Some(session)) => break Some(session),
+                Ok(None) if minted.elapsed() < Duration::from_secs(9 * 60) => { misses = 0; }
+                Ok(None) | Err(PairError::Refused(404)) => break None,
+                Err(PairError::Unreachable) if misses < 15 => { misses += 1; }
+                Err(e) => return fail(&e),
+            }
+        };
+        let Some(session) = approved else {
+            if another_code_allowed(generation) { continue; }
+            log("auth: jellyfin — out of automatic codes");
+            return output_failed(output, epoch, plx_platform::i18n::msg::browse_auth_timeout(),
+                IncidentContext::new(IncidentKind::PinExpired, None), None);
+        };
+        if !output.live() { return; }
+        match pairing::complete(cfg, &base, &server_id, &server_name, &session) {
+            Ok(_) => {
+                log("auth: jellyfin paired — the pairing is saved");
+                let err = pairing::restart_process();
+                log(&format!("auth: jellyfin restart failed ({})", err.kind()));
+                return output_failed(output, epoch, msg::browse_jellyfin_reopen(),
+                    IncidentContext::new(IncidentKind::Internal(plx_telemetry::telemetry::incident::InternalClass::WorkerRefused), None), None);
+            }
+            Err(e) => {
+                log(&format!("auth: jellyfin pairing could not be saved ({})", e.kind()));
+                return output_failed(output, epoch, plx_platform::i18n::msg::browse_auth_timeout(),
+                    IncidentContext::new(IncidentKind::SaveFailed, None), None);
+            }
+        }
+    }
 }
 
 /// How many codes ONE visit to the sign-in screen may burn through before it gives up and offers

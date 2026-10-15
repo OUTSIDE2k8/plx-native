@@ -1759,7 +1759,13 @@ impl LoginScreen {
         let status = self.waiting_label();
         let right = qr_layout(layout, status, f.measure);
 
-        TextView::new("plex.tv/link", theme::size::TITLE, theme::TEXT_HEADING)
+        // Jellyfin mode names the server the code belongs to where Plex names its link page.
+        let link = if plx_jellyfin::pairing::active() {
+            plx_jellyfin::pairing::link_text()
+        } else {
+            "plex.tv/link".to_owned()
+        };
+        TextView::new(&link, theme::size::TITLE, theme::TEXT_HEADING)
             .bold()
             .h(HAlign::Center)
             .draw(p, right.url);

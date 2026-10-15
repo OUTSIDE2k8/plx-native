@@ -2087,6 +2087,11 @@ fn loop_requests(app: &mut App) {
                 super::bridge::nav_root(&mut app.pages, AppArg::Login);
             }
             plx_screens::registry::LoopReq::AccountSignOut => {
+                // Signing out of a Jellyfin pairing forgets it too, so the sign-in screen this lands
+                // on pairs afresh. Off the frame thread: it removes files.
+                if plx_jellyfin::pairing::active() {
+                    plx_base::task::spawn_small("jellyfin-sign-out", plx_jellyfin::sign_out);
+                }
                 super::bridge::execute_session_command(&mut app.pages, plx_session::auth::SessionCmd::SignOut);
                 super::bridge::nav_root(&mut app.pages, AppArg::Login);
             }

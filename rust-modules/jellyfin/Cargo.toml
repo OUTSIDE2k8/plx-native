@@ -7,6 +7,11 @@ description = "PlxNative Jellyfin bridge: a loopback server that answers the Ple
 repository = "https://github.com/GLinnik21/plx-native"
 publish = false
 
+# The crate's root is module `jellyfin` of the application's module tree (ci/module_graph.py
+# `split_mounts`), so ci/module-layers.ini places it as one member, `jellyfin`.
+[package.metadata.plx]
+mount = "jellyfin"
+
 [lib]
 name = "plx_jellyfin"
 # An rlib the application crate links, like every other layer crate (ci/test_no_host_staticlib.py).
@@ -20,6 +25,7 @@ hostsim = ["plx_base/hostsim"]
 [dependencies]
 plx_base = { path = "../base" }
 plx_net = { path = "../net" }
+qrcodegen = "=1.8.0"
 serde_json = { version = "1", default-features = false, features = ["alloc", "std"] }
 
 [lints]

@@ -1168,13 +1168,30 @@ pub(crate) unsafe fn construct(
     // NO token is compiled into this binary. PMS access comes from the signed-in session,
     // or — for automated runs only (the regression harness, headless captures) — from the
     // /tmp/plxnative-token dev trigger. The value is NEVER logged (only that one is in effect).
+    //
+    // **Jellyfin.** This build is a Jellyfin client: a paired server's bridge (`plx_jellyfin`) is
+    // started here, before the gate below reads anything, and the gate then boots against it through
+    // the same direct-server path the dev token takes — a loopback origin and the bridge's own
+    // secret, no plex.tv account. An unpaired television goes to the sign-in screen, whose worker
+    // pairs it by Quick Connect (`plx_session::auth::jellyfin_login`). A controlled (replay) boot
+    // keeps the Plex path it was recorded on.
+    if !controlled {
+        plx_jellyfin::pairing::set_active(true);
+    }
+    let jellyfin = if controlled { None } else { plx_jellyfin::boot() };
+    if let Some(j) = &jellyfin {
+        log(&format!("boot: jellyfin bridge up for the paired server (port {})", j.port));
+    }
     let dev_token = match &initial {
         Some(initial) => {
             let plx_session::auth::owner::BootstrapAuthority::DevPms { primary, .. } = &initial.session.authority
                 else { unreachable!("preflight validated authority") };
             primary.token.clone()
         }
-        _ => crate::dev::scenarios::dev_token(),
+        _ => match &jellyfin {
+            Some(j) => j.local_token.clone(),
+            None => crate::dev::scenarios::dev_token(),
+        },
     };
     // dev: /tmp/plxnative-servers — credentials for a SECOND (third, …) server, so an automated
     // run can reach a friend's SHARED server beside the one above. A shared server is its own
@@ -1218,9 +1235,11 @@ pub(crate) unsafe fn construct(
         }
         Ok(_) => {}
     }
-    let host_s = std::ffi::CStr::from_ptr(pms_host)
-        .to_string_lossy()
-        .into_owned();
+    let host_s = match &jellyfin {
+        Some(_) => "127.0.0.1".to_owned(),
+        None => std::ffi::CStr::from_ptr(pms_host).to_string_lossy().into_owned(),
+    };
+    let pms_port = jellyfin.as_ref().map_or(pms_port, |j| c_int::from(j.port));
 
     // UI infra + poster workers always come up — the owned login/profiles screens use them too.
     //
@@ -1298,10 +1317,15 @@ pub(crate) unsafe fn construct(
     }
     #[cfg(not(test))]
     plx_platform::i18n::initialize(session.language, controlled);
-    let forced_login = !controlled && crate::dev::scenarios::login_forced();
+    // An unpaired Jellyfin television signs in (pairs) whatever Plex session it may still hold.
+    let forced_login = !controlled && (crate::dev::scenarios::login_forced()
+        || (plx_jellyfin::pairing::active() && jellyfin.is_none() && dev_token.is_empty()));
     let dev_primary = (!forced_login && !dev_token.is_empty()).then(|| {
-        let origin = crate::dev::scenarios::pms_origin()
-            .unwrap_or_else(|| plx_plex::plex::Origin::http(&host_s, pms_port));
+        let origin = match &jellyfin {
+            Some(_) => plx_plex::plex::Origin::http(&host_s, pms_port),
+            None => crate::dev::scenarios::pms_origin()
+                .unwrap_or_else(|| plx_plex::plex::Origin::http(&host_s, pms_port)),
+        };
         plx_plex::plex::session::ServerRef {
             address: origin.host().to_owned(), port: i64::from(origin.port()),
             origin_url: origin.base(), token: dev_token.clone(),

@@ -45,6 +45,8 @@ plx_plex = { path = "../plex" }
 plx_telemetry = { path = "../telemetry" }
 plx_data = { path = "../data" }
 plx_session = { path = "../session" }
+# The sign-in screen names the Jellyfin server above the pairing code (`login.rs`).
+plx_jellyfin = { path = "../jellyfin" }
 plx_media = { path = "../media" }
 plx_appkit = { path = "../appkit" }
 serde_json = { version = "1", default-features = false, features = ["alloc", "std"] }

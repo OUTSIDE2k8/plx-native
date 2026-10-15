@@ -640,6 +640,7 @@ version = "0.0.0"
 dependencies = [
  "plx_base",
  "plx_net",
+ "qrcodegen",
  "serde_json",
 ]
 
@@ -721,6 +722,7 @@ dependencies = [
  "plx_base",
  "plx_data",
  "plx_gfx",
+ "plx_jellyfin",
  "plx_machine",
  "plx_media",
  "plx_net",
@@ -739,6 +741,7 @@ version = "0.0.0"
 dependencies = [
  "libc",
  "plx_base",
+ "plx_jellyfin",
  "plx_machine",
  "plx_net",
  "plx_platform",
@@ -786,6 +789,7 @@ dependencies = [
  "plx_base",
  "plx_data",
  "plx_gfx",
+ "plx_jellyfin",
  "plx_machine",
  "plx_media",
  "plx_net",

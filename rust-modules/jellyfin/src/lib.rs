@@ -21,6 +21,7 @@ pub mod config;
 pub mod discovery;
 pub mod ids;
 pub mod map;
+pub mod pairing;
 pub mod routes;
 pub mod server;
 pub mod upstream;
@@ -48,4 +49,29 @@ pub fn start(cfg: &Config, port: u16) -> std::io::Result<Started> {
     let running = server::serve(bridge, port)?;
     Ok(Started { port: running.port, local_token: cfg.local_token.clone(), machine_id,
         server_name: cfg.server_name.clone() })
+}
+
+/// The loopback port the bridge prefers. Fixed so the app's artwork cache keys (which include the
+/// server origin) survive a reboot; any free port is taken when it is busy.
+pub const PREFERRED_PORT: u16 = 32411;
+
+/// The boot path's question: a saved, signed-in pairing, started. `None` means the sign-in screen
+/// should pair this television first.
+pub fn boot() -> Option<Started> {
+    let cfg = Config::load()?;
+    if !cfg.signed_in() {
+        return None;
+    }
+    match start(&cfg, PREFERRED_PORT).or_else(|_| start(&cfg, 0)) {
+        Ok(s) => Some(s),
+        Err(e) => {
+            plx_base::eventlog::log(&format!("jellyfin: bridge did not start ({})", e.kind()));
+            None
+        }
+    }
+}
+
+/// Sign out: forget the pairing (the server, the user and the token) on every candidate path.
+pub fn sign_out() {
+    Config::forget(&config::candidates());
 }

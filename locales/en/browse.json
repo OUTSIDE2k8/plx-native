@@ -332,11 +332,11 @@
     "description": "browse login slow"
   },
   "browse.login.title": {
-    "value": "Sign in to Plex",
+    "value": "Sign in to Jellyfin",
     "description": "browse login title"
   },
   "browse.login.instructions": {
-    "value": "Use your phone camera to scan the code, or link this television manually with the address and code shown here.",
+    "value": "Scan the code with your phone, or open Jellyfin on any device, go to Settings → Quick Connect and enter the code shown here.",
     "description": "browse login instructions"
   },
   "browse.search.placeholder": {
@@ -392,8 +392,24 @@
     "description": "browse login finding"
   },
   "browse.login.connecting": {
-    "value": "Connecting to Plex…",
+    "value": "Looking for Jellyfin…",
     "description": "browse login connecting"
+  },
+  "browse.jellyfin.no_server": {
+    "value": "No Jellyfin server found on this network. Check that it is on and that auto discovery is enabled (Dashboard → Networking).",
+    "description": "browse jellyfin no server"
+  },
+  "browse.jellyfin.quick_connect_off": {
+    "value": "Quick Connect is off on your Jellyfin server. An administrator can turn it on in Dashboard → General.",
+    "description": "browse jellyfin quick connect off"
+  },
+  "browse.jellyfin.unreachable": {
+    "value": "Your Jellyfin server stopped answering. Check that it is on, then try again.",
+    "description": "browse jellyfin unreachable"
+  },
+  "browse.jellyfin.reopen": {
+    "value": "This television is now linked to Jellyfin. Close the app and open it again.",
+    "description": "browse jellyfin reopen"
   },
   "browse.person.eyebrow": {
     "value": "PERSON",

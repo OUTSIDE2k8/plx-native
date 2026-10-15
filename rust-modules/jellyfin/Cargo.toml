@@ -1,0 +1,26 @@
+[package]
+name = "plx_jellyfin"
+version = "0.0.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "PlxNative Jellyfin bridge: a loopback server that answers the Plex Media Server subset the app speaks, backed by a Jellyfin server."
+repository = "https://github.com/GLinnik21/plx-native"
+publish = false
+
+[lib]
+name = "plx_jellyfin"
+# An rlib the application crate links, like every other layer crate (ci/test_no_host_staticlib.py).
+crate-type = ["rlib"]
+
+[features]
+default = []
+devtriggers = ["plx_base/devtriggers", "plx_net/devtriggers"]
+hostsim = ["plx_base/hostsim"]
+
+[dependencies]
+plx_base = { path = "../base" }
+plx_net = { path = "../net" }
+serde_json = { version = "1", default-features = false, features = ["alloc", "std"] }
+
+[lints]
+workspace = true

@@ -396,7 +396,7 @@
     "description": "browse login connecting"
   },
   "browse.jellyfin.no_server": {
-    "value": "No Jellyfin server found on this network. Check that it is on and that auto discovery is enabled (Dashboard → Networking).",
+    "value": "No Jellyfin server found on this network. Check that it is on and on the same network as this TV.",
     "description": "browse jellyfin no server"
   },
   "browse.jellyfin.quick_connect_off": {

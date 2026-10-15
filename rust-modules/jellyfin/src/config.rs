@@ -94,7 +94,19 @@ impl Config {
             user_id: s("user_id"), user_name: s("user_name"), token: s("token"),
             device_id: s("device_id"), local_token: s("local_token"),
         };
-        (!c.device_id.is_empty() && !c.local_token.is_empty()).then_some(c)
+        // A file holding only `{"server": "http://…:8096"}` (written by hand, through Dev Manager's
+        // file browser, for a network where discovery cannot reach the server) is a valid start:
+        // the identity this install would have minted anyway is minted now.
+        let mut c = c;
+        if c.device_id.is_empty() || c.local_token.is_empty() {
+            if c.server.is_empty() {
+                return None;
+            }
+            let fresh = Self::fresh();
+            c.device_id = fresh.device_id;
+            c.local_token = fresh.local_token;
+        }
+        Some(c)
     }
 
     /// The first candidate that holds a readable config.
@@ -185,6 +197,15 @@ mod tests {
         Config::forget(&paths);
         assert_eq!(Config::load_from(&paths), None);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_hand_written_server_only_file_is_a_valid_start() {
+        let c = Config::from_json(&serde_json::json!({ "server": "http://192.168.1.5:8096" })).unwrap();
+        assert_eq!(c.server, "http://192.168.1.5:8096");
+        assert_eq!(c.device_id.len(), 32);
+        assert!(!c.signed_in());
+        assert!(Config::from_json(&serde_json::json!({})).is_none());
     }
 
     #[test]

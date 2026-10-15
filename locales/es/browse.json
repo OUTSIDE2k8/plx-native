@@ -98,7 +98,7 @@
   "browse.login.failed": "No se pudo iniciar sesión",
   "browse.login.finding": "Buscando tu servidor…",
   "browse.login.connecting": "Buscando Jellyfin…",
-  "browse.jellyfin.no_server": "No se ha encontrado ningún servidor Jellyfin en esta red. Comprueba que está encendido y que el descubrimiento automático está activado (Panel → Redes).",
+  "browse.jellyfin.no_server": "No se ha encontrado ningún servidor Jellyfin en esta red. Comprueba que está encendido y en la misma red que la TV.",
   "browse.jellyfin.quick_connect_off": "Quick Connect está desactivado en tu servidor Jellyfin. Un administrador puede activarlo en Panel → General.",
   "browse.jellyfin.unreachable": "Tu servidor Jellyfin ha dejado de responder. Comprueba que está encendido y vuelve a intentarlo.",
   "browse.jellyfin.reopen": "Este televisor ya está vinculado a Jellyfin. Cierra la app y vuelve a abrirla.",

@@ -86,8 +86,23 @@ pub fn find_server(cfg: &Config, transport: &dyn Transport) -> Result<(String, S
             return Ok(found);
         }
     }
-    for _ in 0..3 {
+    for _ in 0..2 {
         for f in discovery::discover(Duration::from_millis(1500)) {
+            if let Some(found) = answer(&f.address) {
+                return Ok(found);
+            }
+        }
+    }
+    // Names a home network commonly gives the server (a router's DNS, mDNS where the TV resolves it).
+    for host in ["jellyfin", "jellyfin.lan", "jellyfin.local", "jellyfin.home"] {
+        if let Some(found) = answer(&format!("http://{host}:8096")) {
+            return Ok(found);
+        }
+    }
+    // UDP discovery was silent: knock on Jellyfin's default ports across the local subnet.
+    for port in [8096, 8920] {
+        for f in discovery::scan_subnet(port) {
+            plx_base::eventlog::log(&format!("jellyfin: found a server by subnet scan on port {port}"));
             if let Some(found) = answer(&f.address) {
                 return Ok(found);
             }

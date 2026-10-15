@@ -98,7 +98,7 @@
   "browse.login.failed": "Не ўдалося ўвайсці",
   "browse.login.finding": "Пошук вашага сервера…",
   "browse.login.connecting": "Пошук Jellyfin…",
-  "browse.jellyfin.no_server": "У гэтай сетцы не знойдзена сервера Jellyfin. Праверце, што ён уключаны і што аўтаматычнае выяўленне ўключана (Панэль → Сетка).",
+  "browse.jellyfin.no_server": "У гэтай сетцы не знойдзена сервера Jellyfin. Праверце, што ён уключаны і ў той жа сетцы, што і тэлевізар.",
   "browse.jellyfin.quick_connect_off": "Quick Connect выключаны на вашым серверы Jellyfin. Адміністратар можа ўключыць яго ў Панэль → Агульныя.",
   "browse.jellyfin.unreachable": "Ваш сервер Jellyfin перастаў адказваць. Праверце, што ён уключаны, і паспрабуйце зноў.",
   "browse.jellyfin.reopen": "Гэты тэлевізар цяпер звязаны з Jellyfin. Закрыйце праграму і адкрыйце яе зноў.",
